@@ -1,25 +1,25 @@
 #!/bin/bash
 
-# mTLS 演示脚本
-# 演示如何使用 detkey 工具生成 mTLS 所需的所有证书和密钥
+# mTLS Demo Script
+# Demonstrates how to use the detkey tool to generate all certificates and keys required for mTLS
 
 set -e
 
-echo "=== DetKey mTLS 演示 ==="
-echo "此脚本演示如何使用 detkey 工具生成 mTLS 环境"
+echo "=== DetKey mTLS Demo ==="
+echo "This script demonstrates how to use the detkey tool to generate an mTLS environment"
 echo ""
 
-# 检查 detkey 是否存在
+# Check if detkey exists
 if ! command -v ./detkey &> /dev/null && ! command -v detkey &> /dev/null; then
-    echo "错误: 找不到 detkey 工具。请先构建或安装 detkey。"
+    echo "Error: Cannot find detkey tool. Please build or install detkey first."
     exit 1
 fi
 
-# 获取脚本目录
+# Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# 设置 detkey 命令
+# Set detkey command
 DETKEY_CMD="$PROJECT_DIR/detkey"
 if ! command -v "$DETKEY_CMD" &> /dev/null; then
     if command -v ./detkey &> /dev/null; then
@@ -27,128 +27,178 @@ if ! command -v "$DETKEY_CMD" &> /dev/null; then
     elif command -v detkey &> /dev/null; then
         DETKEY_CMD="detkey"
     else
-        echo "错误: 找不到 detkey 工具。请先构建或安装 detkey。"
+        echo "Error: Cannot find detkey tool. Please build or install detkey first."
         exit 1
     fi
 fi
 
-# 设置密码（从标准输入读取或使用默认密码）
+# Set password (read from stdin or use default password)
 if [ -t 0 ]; then
-    # 如果是终端，使用默认密码进行演示
+    # If terminal, use default password for demo
     PASSWORD="demo123"
-    echo "使用默认演示密码"
+    echo "Using default demo password"
 else
-    # 如果是管道输入，读取密码
+    # If piped input, read password
     read -r PASSWORD
-    echo "使用输入的密码"
+    echo "Using input password"
 fi
 
-# 创建临时目录
+# Create temporary directory
 TEMP_DIR=$(mktemp -d)
-echo "创建临时目录: $TEMP_DIR"
+echo "Created temporary directory: $TEMP_DIR"
 cd "$TEMP_DIR"
 
 echo ""
-echo "=== 步骤 1: 生成 CA 私钥和证书 ==="
+echo "=== Step 1: Generate CA private key and certificate ==="
 
-# 生成 CA 私钥 (RSA 2048位，演示用)
-echo "生成 CA 私钥..."
-echo "$PASSWORD" | $DETKEY_CMD --context "mtls/ca/v1" --type rsa2048 > ca.key
-echo "✓ CA 私钥已生成 (ca.key)"
+# Generate CA private key (RSA 4096-bit for production-grade security)
+echo "Generating CA private key..."
+echo "$PASSWORD" | $DETKEY_CMD --context "mtls/ca/v1" --type rsa4096 > ca.key
+echo "✓ CA private key generated (ca.key)"
 
-# 创建自签名的 CA 证书
-echo "创建 CA 证书..."
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt \
-    -subj "/C=CN/ST=Beijing/L=Beijing/O=DetKey Demo/OU=CA/CN=DetKey Demo CA"
-echo "✓ CA 证书已创建 (ca.crt)"
+# Create self-signed CA certificate
+echo "Creating CA certificate..."
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 1825 -out ca.crt \
+    -subj "/C=US/ST=California/L=San Francisco/O=DetKey Demo/OU=CA/CN=DetKey Demo CA"
+echo "✓ CA certificate created (ca.crt)"
 
 echo ""
-echo "=== 步骤 2: 生成服务器私钥和证书 ==="
+echo "=== Step 2: Generate server private key and certificate ==="
 
-# 生成服务器私钥
-echo "生成服务器私钥..."
+# Generate server private key
+echo "Generating server private key..."
 echo "$PASSWORD" | $DETKEY_CMD --context "mtls/server/api.example.com/v1" --type rsa2048 > server.key
-echo "✓ 服务器私钥已生成 (server.key)"
+echo "✓ Server private key generated (server.key)"
 
-# 创建服务器证书签名请求 (CSR)
-echo "创建服务器 CSR..."
+# Create server certificate signing request (CSR)
+echo "Creating server CSR..."
 openssl req -new -key server.key -out server.csr \
-    -subj "/C=CN/ST=Beijing/L=Beijing/O=DetKey Demo/OU=Server/CN=api.example.com"
-echo "✓ 服务器 CSR 已创建 (server.csr)"
+    -subj "/C=US/ST=California/L=San Francisco/O=DetKey Demo/OU=Server/CN=api.example.com"
+echo "✓ Server CSR created (server.csr)"
 
-# 用 CA 签发服务器证书
-echo "签发服务器证书..."
+# Create server certificate extensions file for SAN
+cat > server.ext << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = api.example.com
+DNS.2 = localhost
+IP.1 = 127.0.0.1
+EOF
+
+# Sign server certificate with CA
+echo "Signing server certificate..."
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out server.crt -days 365 -sha256
-echo "✓ 服务器证书已签发 (server.crt)"
+    -CAcreateserial -out server.crt -days 365 -sha256 -extfile server.ext
+echo "✓ Server certificate signed (server.crt)"
 
 echo ""
-echo "=== 步骤 3: 生成客户端私钥和证书 ==="
+echo "=== Step 3: Generate client private key and certificate ==="
 
-# 生成客户端私钥
-echo "生成客户端私钥..."
+# Generate client private key
+echo "Generating client private key..."
 echo "$PASSWORD" | $DETKEY_CMD --context "mtls/client/dashboard/v1" --type rsa2048 > client.key
-echo "✓ 客户端私钥已生成 (client.key)"
+echo "✓ Client private key generated (client.key)"
 
-# 创建客户端证书签名请求 (CSR)
-echo "创建客户端 CSR..."
+# Create client certificate signing request (CSR)
+echo "Creating client CSR..."
 openssl req -new -key client.key -out client.csr \
-    -subj "/C=CN/ST=Beijing/L=Beijing/O=DetKey Demo/OU=Client/CN=dashboard-client"
-echo "✓ 客户端 CSR 已创建 (client.csr)"
+    -subj "/C=US/ST=California/L=San Francisco/O=DetKey Demo/OU=Client/CN=dashboard-client"
+echo "✓ Client CSR created (client.csr)"
 
-# 用 CA 签发客户端证书
-echo "签发客户端证书..."
+# Create client certificate extensions file
+cat > client.ext << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = clientAuth
+EOF
+
+# Sign client certificate with CA
+echo "Signing client certificate..."
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out client.crt -days 365 -sha256
-echo "✓ 客户端证书已签发 (client.crt)"
+    -CAcreateserial -out client.crt -days 365 -sha256 -extfile client.ext
+echo "✓ Client certificate signed (client.crt)"
 
 echo ""
-echo "=== 步骤 4: 验证证书 ==="
+echo "=== Step 4: Verify certificates ==="
 
-echo "验证 CA 证书..."
+echo "Verifying CA certificate..."
 openssl x509 -in ca.crt -text -noout | grep -A 2 "Subject:"
 
 echo ""
-echo "验证服务器证书..."
+echo "Verifying server certificate..."
 openssl verify -CAfile ca.crt server.crt
 openssl x509 -in server.crt -text -noout | grep -A 2 "Subject:"
 
 echo ""
-echo "验证客户端证书..."
+echo "Verifying client certificate..."
 openssl verify -CAfile ca.crt client.crt
 openssl x509 -in client.crt -text -noout | grep -A 2 "Subject:"
 
 echo ""
-echo "=== 生成的文件列表 ==="
+echo "=== Generated files list ==="
 ls -la *.crt *.key
 
 echo ""
-echo "=== mTLS 设置完成！ ==="
+echo "=== mTLS setup complete! ==="
 echo ""
-echo "生成的文件位置: $TEMP_DIR"
+echo "Generated files location: $TEMP_DIR"
 echo ""
-echo "文件说明:"
-echo "  ca.crt + ca.key     - CA 证书和私钥"
-echo "  server.crt + server.key - 服务器证书和私钥"
-echo "  client.crt + client.key - 客户端证书和私钥"
-echo ""
-
-echo "=== 重要提示 ==="
-echo "1. 所有私钥都可以通过 detkey 和您的主密码重新生成"
-echo "2. 只需要备份证书文件 (*.crt)，私钥可以随时重新生成"
-echo "3. 如果需要轮换密钥，只需更改上下文版本号 (如 v1 -> v2)"
+echo "File descriptions:"
+echo "  ca.crt + ca.key         - CA certificate and private key"
+echo "  server.crt + server.key - Server certificate and private key"
+echo "  client.crt + client.key - Client certificate and private key"
 echo ""
 
-echo "=== 使用示例 ==="
-echo "测试 mTLS 连接 (需要支持 mTLS 的服务器):"
+echo "=== Key Management Benefits ==="
+echo "✅ All private keys can be regenerated using detkey and your master password"
+echo "✅ Only certificate files (*.crt) need to be backed up"
+echo "✅ Private keys can be regenerated anytime, anywhere"
+echo "✅ For key rotation, simply change context version (v1 → v2)"
+echo "✅ No need to store or sync private key files"
+echo ""
+
+echo "=== Usage Examples ==="
+echo "Test mTLS connection (requires mTLS-enabled server):"
 echo "curl --cert $TEMP_DIR/client.crt --key $TEMP_DIR/client.key --cacert $TEMP_DIR/ca.crt https://api.example.com"
 echo ""
 
-echo "=== DetKey mTLS 命令参考 ==="
-echo "重新生成 CA 私钥:      $DETKEY_CMD --context \"mtls/ca/v1\" --type rsa2048"
-echo "重新生成服务器私钥:    $DETKEY_CMD --context \"mtls/server/api.example.com/v1\" --type rsa2048"
-echo "重新生成客户端私钥:    $DETKEY_CMD --context \"mtls/client/dashboard/v1\" --type rsa2048"
+echo "Configure Nginx with generated certificates:"
+cat << EOF
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    
+    ssl_certificate     $TEMP_DIR/server.crt;
+    ssl_certificate_key $TEMP_DIR/server.key;
+    ssl_client_certificate $TEMP_DIR/ca.crt;
+    ssl_verify_client on;
+    
+    location / {
+        # Your application
+    }
+}
+EOF
 echo ""
 
-echo "演示完成。临时文件保存在: $TEMP_DIR"
-echo "如需清理，请运行: rm -rf $TEMP_DIR" 
+echo "=== DetKey mTLS Command Reference ==="
+echo "Regenerate CA private key:      echo 'your-password' | $DETKEY_CMD --context \"mtls/ca/v1\" --type rsa4096"
+echo "Regenerate server private key:  echo 'your-password' | $DETKEY_CMD --context \"mtls/server/api.example.com/v1\" --type rsa2048"
+echo "Regenerate client private key:  echo 'your-password' | $DETKEY_CMD --context \"mtls/client/dashboard/v1\" --type rsa2048"
+echo ""
+
+echo "=== Context Naming Best Practices ==="
+echo "Use hierarchical naming for organization:"
+echo "  mtls/ca/v1                           - Certificate Authority"
+echo "  mtls/server/api.example.com/v1       - API server"
+echo "  mtls/server/web.example.com/v1       - Web server"
+echo "  mtls/client/monitoring/v1            - Monitoring client"
+echo "  mtls/client/backup-service/v1        - Backup service client"
+echo ""
+
+echo "Demo completed. Temporary files saved at: $TEMP_DIR"
+echo "To clean up, run: rm -rf $TEMP_DIR" 

@@ -19,65 +19,65 @@ import (
 	"golang.org/x/term"
 )
 
-// SALT 是一个固定的、公开的字符串。更改它会导致所有密钥都变化。
-// 理想情况下，每个用户都应该使用自己独一无二的盐。
+// SALT is a fixed, public string. Changing it will cause all keys to change.
+// Ideally, each user should use their own unique salt.
 const SALT = "a-unique-salt-for-detkey-v1"
 
 func main() {
-	// --- 1. 解析命令行参数 ---
-	context := flag.String("context", "", "用于密钥衍生的上下文字符串 (例如 'ssh/server-a/v1' 或 'mtls/ca/v1') (必须)")
-	isPublicKey := flag.Bool("pub", false, "如果指定, 则只输出公钥, 否则输出私钥。")
-	keyType := flag.String("type", "ed25519", "要生成的密钥类型 (ed25519, rsa2048, rsa4096)")
-	outputFormat := flag.String("format", "auto", "输出格式 (auto, ssh, pem). auto 会根据上下文自动选择")
+	// --- 1. Parse command line arguments ---
+	context := flag.String("context", "", "Context string for key derivation (e.g. 'ssh/server-a/v1' or 'mtls/ca/v1') (required)")
+	isPublicKey := flag.Bool("pub", false, "If specified, output public key only, otherwise output private key.")
+	keyType := flag.String("type", "ed25519", "Key type to generate (ed25519, rsa2048, rsa4096)")
+	outputFormat := flag.String("format", "auto", "Output format (auto, ssh, pem). auto will automatically choose based on context")
 	flag.Parse()
 
 	if *context == "" {
 		flag.Usage()
-		log.Fatal("错误: --context 参数是必须的。")
+		log.Fatal("Error: --context parameter is required.")
 	}
 
-	// 验证密钥类型
+	// Validate key type
 	if !isValidKeyType(*keyType) {
-		log.Fatalf("错误: 不支持的密钥类型 '%s'。支持的类型: ed25519, rsa2048, rsa4096", *keyType)
+		log.Fatalf("Error: unsupported key type '%s'. Supported types: ed25519, rsa2048, rsa4096", *keyType)
 	}
 
-	// --- 2. 安全地读取主密码 ---
+	// --- 2. Securely read master password ---
 	var password []byte
 	var err error
 	
-	// 检查是否是终端环境
+	// Check if it's a terminal environment
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		// 在终端环境中安全读取密码（不回显）
-		fmt.Fprint(os.Stderr, "请输入您的主密码: ")
+		// Securely read password in terminal environment (no echo)
+		fmt.Fprint(os.Stderr, "Enter your master password: ")
 		password, err = term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr) // 读取后换行
+		fmt.Fprintln(os.Stderr) // Newline after reading
 		if err != nil {
-			log.Fatalf("错误: 无法读取密码: %v", err)
+			log.Fatalf("Error: unable to read password: %v", err)
 		}
 	} else {
-		// 在非终端环境中（如管道、脚本）从标准输入读取
+		// Read from standard input in non-terminal environment (like pipes, scripts)
 		var line string
 		line, err = readLine(os.Stdin)
 		if err != nil {
-			log.Fatalf("错误: 无法读取密码: %v", err)
+			log.Fatalf("Error: unable to read password: %v", err)
 		}
 		password = []byte(line)
 	}
 	
 	if len(password) == 0 {
-		log.Fatal("错误: 密码不能为空。")
+		log.Fatal("Error: password cannot be empty.")
 	}
 
-	// --- 3. 衍生密钥并生成 ---
+	// --- 3. Derive key and generate ---
 	privateKey, err := deriveAndGenerateKey(password, []byte(SALT), *context, *keyType)
 	if err != nil {
-		log.Fatalf("错误: 密钥生成失败: %v", err)
+		log.Fatalf("Error: key generation failed: %v", err)
 	}
 
-	// --- 4. 确定输出格式 ---
+	// --- 4. Determine output format ---
 	format := determineOutputFormat(*outputFormat, *context, *keyType)
 
-	// --- 5. 根据参数输出结果 ---
+	// --- 5. Output result based on parameters ---
 	if *isPublicKey {
 		err = outputPublicKey(privateKey, format)
 	} else {
@@ -85,53 +85,53 @@ func main() {
 	}
 	
 	if err != nil {
-		log.Fatalf("错误: 输出失败: %v", err)
+		log.Fatalf("Error: output failed: %v", err)
 	}
 }
 
-// deriveAndGenerateKey 是核心逻辑函数，现在支持多种密钥类型
+// deriveAndGenerateKey is the core logic function, now supports multiple key types
 func deriveAndGenerateKey(password, salt []byte, context, keyType string) (crypto.PrivateKey, error) {
-	// --- 核心步骤 A: 密钥延伸 (Key Stretching) ---
-	// 使用 Argon2id 对用户输入的密码进行"慢哈希"，生成一个高强度的 32 字节主种子。
-	// 这使得对主密码的离线暴力破解变得极其昂贵。
-	// Argon2id 的参数可以调整，值越大越安全，但生成速度越慢。
+	// --- Core Step A: Key Stretching ---
+	// Use Argon2id to perform "slow hash" on user input password, generating a high-strength 32-byte master seed.
+	// This makes offline brute force attacks against the master password extremely expensive.
+	// Argon2id parameters can be adjusted, higher values are more secure but slower to generate.
 	masterSeed := argon2.IDKey(password, salt, 1, 64*1024, 4, 32)
 
-	// --- 核心步骤 B: 密钥衍生 (Key Derivation) ---
-	// 使用 HKDF 从主种子和上下文中衍生出最终的、用于生成密钥的种子。
-	// 使用 SHA256 作为哈希函数。
+	// --- Core Step B: Key Derivation ---
+	// Use HKDF to derive the final seed for key generation from the master seed and context.
+	// Using SHA256 as the hash function.
 	hkdfReader := hkdf.New(sha256.New, masterSeed, salt, []byte(context))
 
-	// --- 核心步骤 C: 根据类型生成密钥 ---
+	// --- Core Step C: Generate key based on type ---
 	var privateKey crypto.PrivateKey
 	var err error
 
 	switch keyType {
 	case "rsa2048":
-		// 为 RSA 密钥生成创建无限熵源
+		// Create unlimited entropy source for RSA key generation
 		deterministicReader := newDeterministicReader(hkdfReader)
 		privateKey, err = rsa.GenerateKey(deterministicReader, 2048)
 	case "rsa4096":
 		deterministicReader := newDeterministicReader(hkdfReader)
 		privateKey, err = rsa.GenerateKey(deterministicReader, 4096)
 	case "ed25519":
-		finalSeed := make([]byte, ed25519.SeedSize) // Ed25519 需要 32 字节的种子
+		finalSeed := make([]byte, ed25519.SeedSize) // Ed25519 requires 32 bytes of seed
 		if _, err = io.ReadFull(hkdfReader, finalSeed); err != nil {
-			return nil, fmt.Errorf("无法从 HKDF 读取最终种子: %w", err)
+			return nil, fmt.Errorf("unable to read final seed from HKDF: %w", err)
 		}
 		privateKey = ed25519.NewKeyFromSeed(finalSeed)
 	default:
-		return nil, fmt.Errorf("不支持的密钥类型: %s", keyType)
+		return nil, fmt.Errorf("unsupported key type: %s", keyType)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("无法生成 %s 密钥: %w", keyType, err)
+		return nil, fmt.Errorf("unable to generate %s key: %w", keyType, err)
 	}
 
 	return privateKey, nil
 }
 
-// deterministicReader 提供快速的确定性熵源
+// deterministicReader provides fast deterministic entropy source
 type deterministicReader struct {
 	seed    [32]byte
 	counter uint64
@@ -139,27 +139,27 @@ type deterministicReader struct {
 	bufPos  int
 }
 
-// newDeterministicReader 创建一个新的高效确定性读取器
+// newDeterministicReader creates a new efficient deterministic reader
 func newDeterministicReader(hkdf io.Reader) *deterministicReader {
 	dr := &deterministicReader{
-		buffer: make([]byte, 8192), // 8KB 缓冲区
+		buffer: make([]byte, 8192), // 8KB buffer
 		bufPos: 0,
 	}
 	
-	// 从 HKDF 读取种子
+	// Read seed from HKDF
 	_, err := io.ReadFull(hkdf, dr.seed[:])
 	if err != nil {
-		// 如果读取失败，使用默认种子（不应该发生）
+		// If reading fails, use default seed (should not happen)
 		copy(dr.seed[:], []byte("default-seed-for-rsa-generation"))
 	}
 	
-	// 预填充缓冲区
+	// Pre-fill buffer
 	dr.refillBuffer()
 	
 	return dr
 }
 
-// refillBuffer 使用快速哈希算法重新填充缓冲区
+// refillBuffer refills the buffer using fast hash algorithm
 func (dr *deterministicReader) refillBuffer() {
 	hasher := sha256.New()
 	for i := 0; i < len(dr.buffer)/32; i++ {
@@ -174,17 +174,17 @@ func (dr *deterministicReader) refillBuffer() {
 	dr.bufPos = 0
 }
 
-// Read 实现 io.Reader 接口，提供快速的确定性熵
+// Read implements io.Reader interface, providing fast deterministic entropy
 func (dr *deterministicReader) Read(p []byte) (n int, err error) {
 	totalRead := 0
 	
 	for totalRead < len(p) {
-		// 如果缓冲区耗尽，重新填充
+		// If buffer is exhausted, refill it
 		if dr.bufPos >= len(dr.buffer) {
 			dr.refillBuffer()
 		}
 		
-		// 从缓冲区复制数据
+		// Copy data from buffer
 		toCopy := len(p) - totalRead
 		remaining := len(dr.buffer) - dr.bufPos
 		if toCopy > remaining {
@@ -199,7 +199,7 @@ func (dr *deterministicReader) Read(p []byte) (n int, err error) {
 	return totalRead, nil
 }
 
-// isValidKeyType 检查密钥类型是否有效
+// isValidKeyType checks if the key type is valid
 func isValidKeyType(keyType string) bool {
 	validTypes := []string{"ed25519", "rsa2048", "rsa4096"}
 	for _, t := range validTypes {
@@ -210,32 +210,32 @@ func isValidKeyType(keyType string) bool {
 	return false
 }
 
-// determineOutputFormat 根据上下文和参数确定输出格式
+// determineOutputFormat determines output format based on context and parameters
 func determineOutputFormat(format, context, keyType string) string {
 	if format != "auto" {
 		return format
 	}
 	
-	// 如果上下文包含 "mtls"，默认使用 PEM 格式
+	// If context contains "mtls", default to PEM format
 	if containsString(context, "mtls") {
 		return "pem"
 	}
 	
-	// 如果上下文包含 "ssh"，默认使用 SSH 格式
+	// If context contains "ssh", default to SSH format
 	if containsString(context, "ssh") {
 		return "ssh"
 	}
 	
-	// 对于 RSA 密钥，在没有明确上下文时，默认使用 PEM 格式
+	// For RSA keys, default to PEM format when context is unclear
 	if keyType == "rsa2048" || keyType == "rsa4096" {
 		return "pem"
 	}
 	
-	// 默认使用 SSH 格式
+	// Default to SSH format
 	return "ssh"
 }
 
-// containsString 检查字符串是否包含子字符串
+// containsString checks if string contains substring
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && 
 		   (s == substr || 
@@ -256,7 +256,7 @@ func containsSubstring(s, substr string) bool {
 	return false
 }
 
-// outputPublicKey 输出公钥
+// outputPublicKey outputs public key
 func outputPublicKey(privateKey crypto.PrivateKey, format string) error {
 	switch format {
 	case "ssh":
@@ -264,11 +264,11 @@ func outputPublicKey(privateKey crypto.PrivateKey, format string) error {
 	case "pem":
 		return outputPEMPublicKey(privateKey)
 	default:
-		return fmt.Errorf("不支持的公钥格式: %s", format)
+		return fmt.Errorf("unsupported public key format: %s", format)
 	}
 }
 
-// outputPrivateKey 输出私钥
+// outputPrivateKey outputs private key
 func outputPrivateKey(privateKey crypto.PrivateKey, format string) error {
 	switch format {
 	case "ssh":
@@ -276,28 +276,28 @@ func outputPrivateKey(privateKey crypto.PrivateKey, format string) error {
 	case "pem":
 		return outputPEMPrivateKey(privateKey)
 	default:
-		return fmt.Errorf("不支持的私钥格式: %s", format)
+		return fmt.Errorf("unsupported private key format: %s", format)
 	}
 }
 
-// outputSSHPublicKey 输出 SSH 格式的公钥
+// outputSSHPublicKey outputs SSH format public key
 func outputSSHPublicKey(privateKey crypto.PrivateKey) error {
 	publicKey := privateKey.(interface{ Public() crypto.PublicKey }).Public()
 	sshPubKey, err := ssh.NewPublicKey(publicKey)
 	if err != nil {
-		return fmt.Errorf("无法创建 SSH 公钥: %w", err)
+		return fmt.Errorf("unable to create SSH public key: %w", err)
 	}
 	fmt.Print(string(ssh.MarshalAuthorizedKey(sshPubKey)))
 	return nil
 }
 
-// outputPEMPublicKey 输出 PEM 格式的公钥
+// outputPEMPublicKey outputs PEM format public key
 func outputPEMPublicKey(privateKey crypto.PrivateKey) error {
 	publicKey := privateKey.(interface{ Public() crypto.PublicKey }).Public()
 	
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
 	if err != nil {
-		return fmt.Errorf("无法序列化公钥: %w", err)
+		return fmt.Errorf("unable to serialize public key: %w", err)
 	}
 	
 	pemBlock := &pem.Block{
@@ -308,16 +308,16 @@ func outputPEMPublicKey(privateKey crypto.PrivateKey) error {
 	return pem.Encode(os.Stdout, pemBlock)
 }
 
-// outputSSHPrivateKey 输出 SSH 格式的私钥
+// outputSSHPrivateKey outputs SSH format private key
 func outputSSHPrivateKey(privateKey crypto.PrivateKey) error {
 	pemBlock, err := ssh.MarshalPrivateKey(privateKey, "")
 	if err != nil {
-		return fmt.Errorf("无法序列化私钥: %w", err)
+		return fmt.Errorf("unable to serialize private key: %w", err)
 	}
 	return pem.Encode(os.Stdout, pemBlock)
 }
 
-// outputPEMPrivateKey 输出 PEM 格式的私钥
+// outputPEMPrivateKey outputs PEM format private key
 func outputPEMPrivateKey(privateKey crypto.PrivateKey) error {
 	var pemBlock *pem.Block
 	
@@ -331,21 +331,21 @@ func outputPEMPrivateKey(privateKey crypto.PrivateKey) error {
 	case ed25519.PrivateKey:
 		keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
 		if err != nil {
-			return fmt.Errorf("无法序列化 Ed25519 私钥: %w", err)
+			return fmt.Errorf("unable to serialize Ed25519 private key: %w", err)
 		}
 		pemBlock = &pem.Block{
 			Type:  "PRIVATE KEY",
 			Bytes: keyBytes,
 		}
 	default:
-		return fmt.Errorf("不支持的私钥类型")
+		return fmt.Errorf("unsupported private key type")
 	}
 	
 	return pem.Encode(os.Stdout, pemBlock)
 }
 
-// readLine 从给定的 io.Reader 中读取一行文本
-// 用于在非终端环境中读取密码
+// readLine reads a line of text from the given io.Reader
+// Used for reading passwords in non-terminal environments
 func readLine(reader io.Reader) (string, error) {
 	var line []byte
 	buffer := make([]byte, 1)
@@ -362,7 +362,7 @@ func readLine(reader io.Reader) (string, error) {
 			if buffer[0] == '\n' {
 				break
 			}
-			if buffer[0] != '\r' { // 忽略回车符
+			if buffer[0] != '\r' { // Ignore carriage return
 				line = append(line, buffer[0])
 			}
 		}

@@ -1,124 +1,168 @@
 #!/bin/bash
 
-# DetKey 基本功能测试脚本
-# 此脚本演示 detkey 的确定性密钥生成功能
+# DetKey Basic Functionality Test Script
+# This script demonstrates detkey's deterministic key generation capabilities
 
-echo "=== DetKey 基本功能测试 ==="
+echo "=== DetKey Basic Functionality Test ==="
 echo
 
-# 确保 detkey 可执行文件存在
+# Ensure detkey executable exists
 if [ ! -f "../detkey" ]; then
-    echo "错误: 未找到 detkey 可执行文件。请先运行 'make build' 构建项目。"
+    echo "Error: detkey executable not found. Please run 'make build' to build the project first."
     exit 1
 fi
 
 DETKEY="../detkey"
 TEST_PASSWORD="test-password-123"
-TEST_CONTEXT="ssh/test-server/v1"
+TEST_CONTEXT="ssh/prod-server/v1"
 
-echo "测试参数:"
-echo "- 密码: $TEST_PASSWORD"
-echo "- 上下文: $TEST_CONTEXT"
+echo "Test parameters:"
+echo "- Password: $TEST_PASSWORD"
+echo "- Context: $TEST_CONTEXT"
 echo
 
-echo "=== 测试 1: 确定性生成验证 ==="
-echo "生成相同上下文的密钥两次，验证结果一致..."
+echo "=== Test 1: Deterministic Generation Verification ==="
+echo "Generating keys twice with the same context to verify consistency..."
 
-# 生成第一次
-echo "第一次生成公钥:"
+# First generation
+echo "First public key generation:"
 PUBKEY1=$(echo "$TEST_PASSWORD" | $DETKEY --context "$TEST_CONTEXT" --pub)
 echo "$PUBKEY1"
 echo
 
-# 生成第二次
-echo "第二次生成公钥:"
+# Second generation
+echo "Second public key generation:"
 PUBKEY2=$(echo "$TEST_PASSWORD" | $DETKEY --context "$TEST_CONTEXT" --pub)
 echo "$PUBKEY2"
 echo
 
-# 比较结果
+# Compare results
 if [ "$PUBKEY1" = "$PUBKEY2" ]; then
-    echo "✅ 确定性测试通过: 相同输入产生相同输出"
+    echo "✅ Deterministic test passed: Same input produces same output"
 else
-    echo "❌ 确定性测试失败: 相同输入产生不同输出"
+    echo "❌ Deterministic test failed: Same input produces different output"
     exit 1
 fi
 echo
 
-echo "=== 测试 2: 不同上下文生成不同密钥 ==="
-CONTEXT1="ssh/server-1/v1"
-CONTEXT2="ssh/server-2/v1"
+echo "=== Test 2: Different Contexts Generate Different Keys ==="
+CONTEXT1="ssh/production/web-server/v1"
+CONTEXT2="ssh/staging/database/v1"
 
-echo "上下文 1: $CONTEXT1"
+echo "Context 1: $CONTEXT1"
 PUBKEY_CTX1=$(echo "$TEST_PASSWORD" | $DETKEY --context "$CONTEXT1" --pub)
 echo "$PUBKEY_CTX1"
 echo
 
-echo "上下文 2: $CONTEXT2"
+echo "Context 2: $CONTEXT2"
 PUBKEY_CTX2=$(echo "$TEST_PASSWORD" | $DETKEY --context "$CONTEXT2" --pub)
 echo "$PUBKEY_CTX2"
 echo
 
 if [ "$PUBKEY_CTX1" != "$PUBKEY_CTX2" ]; then
-    echo "✅ 上下文隔离测试通过: 不同上下文产生不同密钥"
+    echo "✅ Context isolation test passed: Different contexts produce different keys"
 else
-    echo "❌ 上下文隔离测试失败: 不同上下文产生相同密钥"
+    echo "❌ Context isolation test failed: Different contexts produce same keys"
     exit 1
 fi
 echo
 
-echo "=== 测试 3: 私钥和公钥格式验证 ==="
+echo "=== Test 3: Private and Public Key Format Validation ==="
 
-echo "生成私钥 (PEM 格式):"
+echo "Generating private key (PEM format):"
 PRIVATE_KEY=$(echo "$TEST_PASSWORD" | $DETKEY --context "$TEST_CONTEXT")
 echo "$PRIVATE_KEY" | head -5
-echo "... (截断显示)"
+echo "... (truncated display)"
 echo "$PRIVATE_KEY" | tail -5
 echo
 
-# 验证私钥格式
+# Validate private key format
 if echo "$PRIVATE_KEY" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
-    echo "✅ 私钥格式验证通过: 标准 OpenSSH PEM 格式"
+    echo "✅ Private key format validation passed: Standard OpenSSH PEM format"
 else
-    echo "❌ 私钥格式验证失败: 非标准格式"
+    echo "❌ Private key format validation failed: Non-standard format"
     exit 1
 fi
 
-# 验证公钥格式
+# Validate public key format
 if echo "$PUBKEY1" | grep -q "^ssh-ed25519 "; then
-    echo "✅ 公钥格式验证通过: 标准 SSH 公钥格式"
+    echo "✅ Public key format validation passed: Standard SSH public key format"
 else
-    echo "❌ 公钥格式验证失败: 非标准格式"
+    echo "❌ Public key format validation failed: Non-standard format"
     exit 1
 fi
 echo
 
-echo "=== 测试 4: 版本控制功能 ==="
-VERSION_V1="ssh/test-server/v1"
-VERSION_V2="ssh/test-server/v2"
+echo "=== Test 4: Version Control Functionality ==="
+VERSION_V1="ssh/prod-server/v1"
+VERSION_V2="ssh/prod-server/v2"
 
-echo "版本 v1:"
+echo "Version v1:"
 PUBKEY_V1=$(echo "$TEST_PASSWORD" | $DETKEY --context "$VERSION_V1" --pub)
 echo "$PUBKEY_V1"
 echo
 
-echo "版本 v2:"
+echo "Version v2:"
 PUBKEY_V2=$(echo "$TEST_PASSWORD" | $DETKEY --context "$VERSION_V2" --pub)
 echo "$PUBKEY_V2"
 echo
 
 if [ "$PUBKEY_V1" != "$PUBKEY_V2" ]; then
-    echo "✅ 版本控制测试通过: 不同版本产生不同密钥"
+    echo "✅ Version control test passed: Different versions produce different keys"
 else
-    echo "❌ 版本控制测试失败: 不同版本产生相同密钥"
+    echo "❌ Version control test failed: Different versions produce same keys"
     exit 1
 fi
 echo
 
-echo "=== 全部测试通过! ==="
-echo "DetKey 工具工作正常，可以安全使用。"
+echo "=== Test 5: Shell Function Usage Demo ==="
+echo "Demonstrating the recommended sshd shell function approach:"
 echo
-echo "接下来您可以:"
-echo "1. 运行 'make install' 将工具安装到系统路径"
-echo "2. 开始使用真实的主密码和上下文"
-echo "3. 为常用服务器创建 shell 别名" 
+
+cat << 'EOF'
+# Add this function to your ~/.zshrc or ~/.bashrc:
+sshd() {
+    if [ "$#" -lt 2 ]; then
+        echo "Usage: sshd <context> <user@host> [additional ssh options...]"
+        return 1
+    fi
+
+    local context="$1"
+    shift
+
+    local tmp_key_file
+    tmp_key_file=$(mktemp)
+    if [ -z "$tmp_key_file" ]; then
+        echo "Error: Unable to create temporary file." >&2
+        return 1
+    fi
+
+    trap 'rm -f "$tmp_key_file"' EXIT INT TERM
+
+    if ! detkey --context "$context" > "$tmp_key_file"; then
+        echo "Error: detkey private key generation failed." >&2
+        return 1
+    fi
+
+    echo "Connecting using derived key..." >&2
+    ssh -i "$tmp_key_file" "$@"
+}
+
+# Usage examples:
+sshd "ssh/production/web-server/v1" user@prod-server.com
+sshd "ssh/staging/database/v1" admin@staging-db.internal
+EOF
+
+echo
+echo "To deploy public key (one-time setup):"
+echo "detkey --context \"ssh/production/web-server/v1\" --pub | ssh user@server \"cat >> ~/.ssh/authorized_keys\""
+echo
+
+echo "=== All Tests Passed! ==="
+echo "DetKey tool is working correctly and ready for safe use."
+echo
+echo "Next steps:"
+echo "1. Run 'make install' to install the tool to system path"
+echo "2. Start using your real master password and contexts"
+echo "3. Add the sshd shell function to your shell configuration"
+echo "4. Create context patterns for your servers using hierarchical naming" 
