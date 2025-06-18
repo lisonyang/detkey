@@ -48,9 +48,9 @@ func main() {
 	// 检查是否是终端环境
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		// 在终端环境中安全读取密码（不回显）
-		fmt.Print("请输入您的主密码: ")
+		fmt.Fprint(os.Stderr, "请输入您的主密码: ")
 		password, err = term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println() // 读取后换行
+		fmt.Fprintln(os.Stderr) // 读取后换行
 		if err != nil {
 			log.Fatalf("错误: 无法读取密码: %v", err)
 		}
