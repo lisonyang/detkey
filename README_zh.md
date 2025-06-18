@@ -71,17 +71,46 @@ GOOS=darwin GOARCH=arm64 go build -o detkey-darwin-arm64
 
 ### 实际使用场景
 
-#### 1. 部署公钥到服务器
+**⚠️ 重要提示：可靠的SSH密钥部署方法**
 
+常见的一行管道命令可能会导致密码输入冲突，因为 `detkey` 和 `ssh` 两个程序会同时尝试从终端读取密码。为了确保可靠的部署，请使用下面的**三步文件法**：
+
+#### 1. 可靠的公钥部署方法
+
+**第1步：生成公钥到临时文件**
 ```bash
-# 为特定服务器生成公钥并添加到 authorized_keys
-./detkey --context "ssh/prod-server/v1" --pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
+# 生成公钥并保存到临时文件
+./detkey --context "ssh/prod-server/v1" --pub > /tmp/prod-server.pub
+```
+
+**第2步：使用 ssh-copy-id 部署（推荐）**
+```bash
+# 使用 OpenSSH 官方推荐的部署工具
+ssh-copy-id -i /tmp/prod-server.pub user@server
+```
+
+**第3步：清理临时文件**
+```bash
+# 删除临时文件
+rm /tmp/prod-server.pub
+```
+
+**备选部署方法（如果没有 ssh-copy-id）：**
+```bash
+# 第1步：生成公钥到临时文件
+./detkey --context "ssh/prod-server/v1" --pub > /tmp/prod-server.pub
+
+# 第2步：手动部署
+cat /tmp/prod-server.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+
+# 第3步：清理临时文件
+rm /tmp/prod-server.pub
 ```
 
 #### 2. 使用生成的私钥登录
 
 ```bash
-# 使用进程替换直接登录，私钥不会保存到磁盘
+# 使用进程替换直接登录，私钥不会保存到磁盘（部署完成后此方法完全可靠）
 ssh -i <(./detkey --context "ssh/prod-server/v1") user@server
 ```
 
@@ -100,6 +129,14 @@ alias ssh-dev='ssh -i <(detkey --context "ssh/dev-server/v1") user@dev-server'
 ssh-prod  # 连接到生产服务器
 ssh-dev   # 连接到开发服务器
 ```
+
+#### 为什么三步文件法更可靠？
+
+1. **完全隔离**: 每个需要输入密码的步骤都是独立、无干扰的。`detkey` 和 `ssh-copy-id` 在不同的时间点与您的终端进行交互。
+2. **职责单一**: 我们让每个工具只做它最擅长的事：
+   - `detkey`: 只负责生成密钥内容
+   - `ssh-copy-id`: 只负责部署公钥文件，这是它的本职工作，能处理各种边缘情况
+3. **无管道冲突**: 我们彻底避免了导致问题的根源——在同一命令行上混合使用多个需要交互式输入的程序
 
 ## 上下文字符串设计
 
@@ -133,6 +170,32 @@ git/gitlab/work/v1
 2. **保护工具安全**: 不要在不信任的环境中使用
 3. **上下文版本控制**: 如需更换密钥，更改上下文中的版本号
 4. **定期轮换**: 定期更换重要服务的密钥
+
+## 故障排除
+
+### 常见SSH部署问题
+
+如果您在使用三步文件法时仍然遇到问题，请检查以下几点：
+
+1. **服务器SSH配置**: 确保 `/etc/ssh/sshd_config` 允许公钥认证：
+   ```
+   PubkeyAuthentication yes
+   AuthorizedKeysFile .ssh/authorized_keys
+   ```
+
+2. **文件权限**: 验证服务器上的权限设置：
+   ```bash
+   chmod 700 ~/.ssh
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+3. **SELinux/AppArmor**: 在某些系统上，安全模块可能会限制SSH密钥操作。如果部署失败，请检查系统日志。
+
+4. **网络问题**: 在尝试基于密钥的认证之前，确保SSH密码认证连接正常工作。
+
+### 密码输入冲突
+
+如果您遇到"输入密码会错乱"或类似错误，这意味着两个程序在同时尝试从终端读取输入。这正是我们推荐使用三步文件法而不是管道命令的原因。
 
 ## 技术实现
 

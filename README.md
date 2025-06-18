@@ -94,16 +94,56 @@ Options:
 
 #### Real-World SSH Use Cases
 
-```bash
-# Deploy public key to server
-./detkey --context "ssh/prod-server/v1" --pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
+**⚠️ Important: Reliable SSH Key Deployment**
 
-# Login using generated private key
+The commonly suggested one-line pipe command can cause password input conflicts when both `detkey` and `ssh` try to read from the terminal simultaneously. For reliable deployment, use the **three-step file-based method** below:
+
+**Step 1: Generate public key to temporary file**
+```bash
+# Generate public key and save to temporary file
+./detkey --context "ssh/prod-server/v1" --pub > /tmp/prod-server.pub
+```
+
+**Step 2: Deploy using ssh-copy-id (recommended)**
+```bash
+# Use OpenSSH's official deployment tool
+ssh-copy-id -i /tmp/prod-server.pub user@server
+```
+
+**Step 3: Clean up temporary file**
+```bash
+# Remove temporary file
+rm /tmp/prod-server.pub
+```
+
+**Alternative deployment method (if ssh-copy-id is not available):**
+```bash
+# Step 1: Generate public key to temporary file
+./detkey --context "ssh/prod-server/v1" --pub > /tmp/prod-server.pub
+
+# Step 2: Deploy manually
+cat /tmp/prod-server.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh"
+
+# Step 3: Clean up
+rm /tmp/prod-server.pub
+```
+
+**After deployment, use passwordless login:**
+```bash
+# Login using generated private key (this works reliably)
 ssh -i <(./detkey --context "ssh/prod-server/v1") user@server
 
 # Create convenient aliases
 alias ssh-prod='ssh -i <(detkey --context "ssh/prod-server/v1") user@prod-server'
 ```
+
+**Why is the three-step file method more reliable?**
+
+1. **Complete Isolation**: Each password-requiring step is independent and interference-free. `detkey` and `ssh-copy-id` interact with your terminal at different times.
+2. **Single Responsibility**: We let each tool do what it does best:
+   - `detkey`: Only responsible for generating key content
+   - `ssh-copy-id`: Only responsible for deploying public key files. This is its primary job and it handles various edge cases.
+3. **No Pipeline Conflicts**: We completely avoid the root cause of the problem—mixing multiple interactive programs in the same command line.
 
 ### mTLS Certificate Generation
 
@@ -198,6 +238,32 @@ mtls/client/monitoring/v1            # Monitoring client
 ### Version Control
 
 Change the version number when keys need rotation:
+
+## Troubleshooting
+
+### Common SSH Deployment Issues
+
+If you still encounter problems with the three-step file method, check the following:
+
+1. **Server SSH Configuration**: Ensure `/etc/ssh/sshd_config` allows public key authentication:
+   ```
+   PubkeyAuthentication yes
+   AuthorizedKeysFile .ssh/authorized_keys
+   ```
+
+2. **File Permissions**: Verify correct permissions on the server:
+   ```bash
+   chmod 700 ~/.ssh
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+3. **SELinux/AppArmor**: On some systems, security modules might restrict SSH key operations. Check system logs if deployment fails.
+
+4. **Network Issues**: Ensure SSH connectivity works with password authentication before attempting key-based authentication.
+
+### Password Input Conflicts
+
+If you encounter the error "input password will be scrambled" or similar, it means two programs are trying to read from the terminal simultaneously. This is exactly why we recommend the three-step file method instead of pipe commands.
 ```
 mtls/ca/v1    → mtls/ca/v2           # CA key rotation
 ssh/prod/v1   → ssh/prod/v2          # SSH key rotation
