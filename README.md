@@ -36,30 +36,6 @@ This script will automatically:
 2. Download the archive for your system
 3. Extract and move the `detkey` executable to a directory in your PATH
 
-### Build from Source
-
-Ensure you have Go 1.21 or higher installed, then run:
-
-```bash
-go mod tidy
-go build -o detkey
-```
-
-#### Cross-Platform Compilation
-
-To compile for different platforms:
-
-```bash
-# Linux (AMD64)
-GOOS=linux GOARCH=amd64 go build -o detkey-linux
-
-# Windows (AMD64)
-GOOS=windows GOARCH=amd64 go build -o detkey.exe
-
-# macOS (ARM64)
-GOOS=darwin GOARCH=arm64 go build -o detkey-darwin-arm64
-```
-
 ## Usage
 
 ### Command-Line Options
@@ -128,22 +104,103 @@ cat /tmp/prod-server.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/aut
 rm /tmp/prod-server.pub
 ```
 
-**After deployment, use passwordless login:**
-```bash
-# Login using generated private key (this works reliably)
-ssh -i <(./detkey --context "ssh/prod-server/v1") user@server
+**After deployment, use the reliable SSH function method described in the SSH Workflow section below.**
 
-# Create convenient aliases
-alias ssh-prod='ssh -i <(detkey --context "ssh/prod-server/v1") user@prod-server'
+## Examples
+
+### SSH Workflow
+
+**⚠️ Important: Reliable SSH Login Method**
+
+The commonly suggested one-line commands like `ssh -i <(./detkey ...)` can cause terminal control conflicts where both `detkey` and `ssh` try to interact with the terminal simultaneously. This results in password input being scrambled. 
+
+**For completely reliable SSH login, use the following shell function approach:**
+
+#### Step 1: Add the SSH Helper Function
+
+Add the following function to your shell configuration file (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```bash
+#
+# detkey_ssh - Secure and reliable SSH login function
+#
+# This function uses a temporary private key file to resolve terminal control conflicts,
+# ensuring stable operation in any environment.
+#
+detkey_ssh() {
+    # Check parameters
+    if [ "$#" -lt 2 ]; then
+        echo "Usage: detkey_ssh <context> <user@host> [additional ssh options...]"
+        return 1
+    fi
+
+    local context="$1"
+    shift # Remove first parameter (context), rest are ssh command parameters
+
+    # Create a secure temporary file for the private key
+    # mktemp creates a file readable/writable only by the current user
+    local tmp_key_file
+    tmp_key_file=$(mktemp)
+    if [ -z "$tmp_key_file" ]; then
+        echo "Error: Unable to create temporary file." >&2
+        return 1
+    fi
+
+    # Set a trap to ensure the temporary file is deleted automatically
+    # no matter how the function exits (success, failure, interruption).
+    # This is a critical security measure!
+    trap 'rm -f "$tmp_key_file"' EXIT INT TERM
+
+    # --- Step 1: Generate private key independently and write to temp file ---
+    # This process runs independently without any programs competing for terminal access.
+    # We redirect detkey's output to the temporary file.
+    if ! detkey --context "$context" > "$tmp_key_file"; then
+        echo "Error: detkey failed to generate private key." >&2
+        # trap will trigger here and automatically delete the file
+        return 1
+    fi
+    # At this point you'll be prompted for your master password - enter it here.
+
+    # --- Step 2: Use the generated temporary private key file for SSH login ---
+    # Now ssh reads the private key from a static file, it will properly gain terminal control
+    # without conflicting with any other processes.
+    echo "Connecting using derived key..." >&2
+    ssh -i "$tmp_key_file" "$@"
+    
+    # After ssh command completes, function exits and trap automatically deletes temp file.
+}
 ```
 
-**Why is the three-step file method more reliable?**
+**Note**: Replace `detkey` with the actual path to your detkey executable if it's not in your PATH.
 
-1. **Complete Isolation**: Each password-requiring step is independent and interference-free. `detkey` and `ssh-copy-id` interact with your terminal at different times.
-2. **Single Responsibility**: We let each tool do what it does best:
-   - `detkey`: Only responsible for generating key content
-   - `ssh-copy-id`: Only responsible for deploying public key files. This is its primary job and it handles various edge cases.
-3. **No Pipeline Conflicts**: We completely avoid the root cause of the problem—mixing multiple interactive programs in the same command line.
+#### Step 2: Reload Your Shell Configuration
+
+```bash
+source ~/.bashrc  # or ~/.zshrc
+```
+
+#### Step 3: Use the Reliable SSH Login
+
+Now your login workflow becomes:
+
+```bash
+# Connect to production server
+detkey_ssh "ssh/prod-server/v1" user@server
+
+# Connect with additional SSH options
+detkey_ssh "ssh/prod-server/v1" user@server -p 2222
+
+# Connect with port forwarding
+detkey_ssh "ssh/prod-server/v1" user@server -L 8080:localhost:80
+```
+
+**Your login experience:**
+1. You run: `detkey_ssh "ssh/prod-server/v1" user@server`
+2. You see: `Enter your master password:` (enter your **master password**)
+3. You see: `Connecting using derived key...`
+4. You're logged in: `user@server:~$`
+
+No more password conflicts, no more confusion - just reliable, secure SSH access.
 
 ### mTLS Certificate Generation
 
@@ -188,17 +245,7 @@ openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
 
 #### mTLS Demo Script
 
-Run the included demonstration script to see the complete mTLS setup process:
-
-```bash
-./examples/mtls-demo.sh
-```
-
-This script will:
-- Generate all required private keys using DetKey
-- Create a complete certificate chain
-- Validate all certificates
-- Provide usage examples
+For a complete mTLS setup example, see `./examples/mtls-demo.sh`.
 
 ### Output Formats
 
@@ -238,28 +285,6 @@ mtls/client/monitoring/v1            # Monitoring client
 ### Version Control
 
 Change the version number when keys need rotation:
-
-## Troubleshooting
-
-### Common SSH Deployment Issues
-
-If you still encounter problems with the three-step file method, check the following:
-
-1. **Server SSH Configuration**: Ensure `/etc/ssh/sshd_config` allows public key authentication:
-   ```
-   PubkeyAuthentication yes
-   AuthorizedKeysFile .ssh/authorized_keys
-   ```
-
-2. **File Permissions**: Verify correct permissions on the server:
-   ```bash
-   chmod 700 ~/.ssh
-   chmod 600 ~/.ssh/authorized_keys
-   ```
-
-3. **SELinux/AppArmor**: On some systems, security modules might restrict SSH key operations. Check system logs if deployment fails.
-
-4. **Network Issues**: Ensure SSH connectivity works with password authentication before attempting key-based authentication.
 
 ### Password Input Conflicts
 
@@ -335,31 +360,6 @@ Master Password → [Argon2id] → Master Seed → [HKDF + Context] → Entropy 
 ```
 
 The same master password and context will always produce identical keys across different machines and time periods.
-
-## Examples
-
-### SSH Workflow
-```bash
-# Generate and deploy SSH key for production server
-./detkey --context "ssh/prod-web/v1" --pub | ssh user@prod-server "cat >> ~/.ssh/authorized_keys"
-
-# Login to server (key generated on-demand)
-ssh -i <(./detkey --context "ssh/prod-web/v1") user@prod-server
-```
-
-### mTLS Workflow
-```bash
-# Generate all private keys for microservice mTLS
-./detkey --context "mtls/ca/v1" --type rsa4096 > ca.key
-./detkey --context "mtls/server/auth-service/v1" --type rsa2048 > auth-server.key
-./detkey --context "mtls/client/web-frontend/v1" --type rsa2048 > web-client.key
-
-# Create certificate chain (certificates need to be created once and distributed)
-# ... (OpenSSL commands as shown above)
-
-# Later, regenerate any private key when needed
-./detkey --context "mtls/server/auth-service/v1" --type rsa2048 > auth-server.key
-```
 
 ## License
 
