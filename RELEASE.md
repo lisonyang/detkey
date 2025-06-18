@@ -57,10 +57,10 @@ git push origin v1.0.0
 
 发布完成后，您可以：
 
-1. 检查 [Releases 页面](https://github.com/lisonyang/the-axiom/releases)
+1. 检查 [Releases 页面](https://github.com/lisonyang/detkey/releases)
 2. 测试一键安装脚本：
    ```bash
-   curl -sfL https://raw.githubusercontent.com/lisonyang/the-axiom/main/install.sh | sh
+   curl -sfL https://raw.githubusercontent.com/lisonyang/detkey/main/install.sh | sh
    ```
 
 ## 版本号规范

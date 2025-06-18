@@ -1,48 +1,50 @@
-# DetKey - 确定性SSH密钥生成器
+# DetKey - Deterministic SSH Key Generator
 
-DetKey 是一个强大的命令行工具，它允许您使用一个主密码和上下文字符串来确定性地生成SSH密钥。这意味着相同的输入总是会产生相同的密钥对，让您能够在任何地方重新生成相同的SSH密钥，而无需存储或传输密钥文件。
+[English](README.md) | [中文](README_zh.md)
 
-## 核心特性
+DetKey is a powerful command-line tool that allows you to deterministically generate SSH keys using a master password and context string. This means the same input will always produce the same key pair, enabling you to regenerate identical SSH keys anywhere without storing or transferring key files.
 
-- **确定性生成**: 相同的主密码和上下文总是生成相同的密钥对
-- **无依赖**: 编译为单一可执行文件，无需任何外部依赖
-- **跨平台**: 支持 Linux, macOS, Windows
-- **安全设计**: 使用 Argon2id 进行密钥延伸，HKDF 进行密钥衍生
-- **标准格式**: 输出标准的 OpenSSH 格式密钥
+## Core Features
 
-## 安装
+- **Deterministic Generation**: Same master password and context always generate identical key pairs
+- **Zero Dependencies**: Compiled to a single executable with no external dependencies
+- **Cross-Platform**: Supports Linux, macOS, Windows
+- **Security-First Design**: Uses Argon2id for key stretching and HKDF for key derivation
+- **Standard Format**: Outputs standard OpenSSH format keys
 
-### 一键安装（推荐）
+## Installation
 
-您可以使用以下命令自动下载并安装最新版本：
+### One-Click Install (Recommended)
+
+You can automatically download and install the latest version with:
 
 ```bash
-curl -sfL https://raw.githubusercontent.com/lisonyang/the-axiom/main/install.sh | sh
+curl -sfL https://raw.githubusercontent.com/lisonyang/detkey/main/install.sh | sh
 ```
 
-该脚本会自动：
-- 检测您的操作系统和 CPU 架构
-- 从 GitHub Releases 下载对应的二进制文件
-- 安装到 `/usr/local/bin` 目录（可能需要 sudo 权限）
+This script will automatically:
+- Detect your operating system and CPU architecture
+- Download the corresponding binary from GitHub Releases
+- Install to `/usr/local/bin` directory (may require sudo)
 
-### 手动安装
+### Manual Installation
 
-1. 访问 [Releases 页面](https://github.com/lisonyang/the-axiom/releases)
-2. 下载适合您系统的压缩包
-3. 解压并将 `detkey` 可执行文件移动到 PATH 中的目录
+1. Visit the [Releases page](https://github.com/lisonyang/detkey/releases)
+2. Download the archive for your system
+3. Extract and move the `detkey` executable to a directory in your PATH
 
-### 从源码构建
+### Build from Source
 
-确保您已安装 Go 1.21 或更高版本，然后运行：
+Ensure you have Go 1.21 or higher installed, then run:
 
 ```bash
 go mod tidy
 go build -o detkey
 ```
 
-#### 跨平台编译
+#### Cross-Platform Compilation
 
-为不同平台编译：
+To compile for different platforms:
 
 ```bash
 # Linux (AMD64)
@@ -55,53 +57,53 @@ GOOS=windows GOARCH=amd64 go build -o detkey.exe
 GOOS=darwin GOARCH=arm64 go build -o detkey-darwin-arm64
 ```
 
-## 使用方法
+## Usage
 
-### 基本用法
+### Basic Usage
 
 ```bash
-# 生成私钥
+# Generate private key
 ./detkey --context "ssh/server-a/v1"
 
-# 生成公钥
+# Generate public key
 ./detkey --context "ssh/server-a/v1" --pub
 ```
 
-### 实际使用场景
+### Real-World Use Cases
 
-#### 1. 部署公钥到服务器
+#### 1. Deploy Public Key to Server
 
 ```bash
-# 为特定服务器生成公钥并添加到 authorized_keys
+# Generate public key for a specific server and add to authorized_keys
 ./detkey --context "ssh/prod-server/v1" --pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
 ```
 
-#### 2. 使用生成的私钥登录
+#### 2. Login Using Generated Private Key
 
 ```bash
-# 使用进程替换直接登录，私钥不会保存到磁盘
+# Use process substitution to login directly without saving private key to disk
 ssh -i <(./detkey --context "ssh/prod-server/v1") user@server
 ```
 
-#### 3. 创建方便的别名
+#### 3. Create Convenient Aliases
 
-在您的 `~/.bashrc` 或 `~/.zshrc` 中添加：
+Add to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
 alias ssh-prod='ssh -i <(detkey --context "ssh/prod-server/v1") user@prod-server'
 alias ssh-dev='ssh -i <(detkey --context "ssh/dev-server/v1") user@dev-server'
 ```
 
-然后您就可以简单地运行：
+Then you can simply run:
 
 ```bash
-ssh-prod  # 连接到生产服务器
-ssh-dev   # 连接到开发服务器
+ssh-prod  # Connect to production server
+ssh-dev   # Connect to development server
 ```
 
-## 上下文字符串设计
+## Context String Design
 
-上下文字符串用于区分不同的用途。建议使用有层次结构的命名：
+Context strings are used to distinguish different purposes. We recommend using hierarchical naming:
 
 ```
 ssh/production/web-server-1/v1
@@ -111,45 +113,45 @@ git/github/personal/v1
 git/gitlab/work/v1
 ```
 
-## 安全考虑
+## Security Considerations
 
-### 优势
+### Advantages
 
-- **密钥延伸**: 使用 Argon2id 算法使暴力破解成本极高
-- **隔离性**: 不同上下文生成完全独立的密钥
-- **不存储**: 密钥在内存中生成，使用后即刻销毁
-- **确定性**: 无需担心密钥丢失或备份
+- **Key Stretching**: Uses Argon2id algorithm to make brute force attacks extremely costly
+- **Isolation**: Different contexts generate completely independent keys
+- **No Storage**: Keys are generated in memory and destroyed immediately after use
+- **Deterministic**: No need to worry about key loss or backups
 
-### 权衡
+### Trade-offs
 
-- **主密码强度**: 工具的安全性依赖于您主密码的强度
-- **离线攻击**: 如果攻击者获得工具和一个已知的密钥对，可能尝试暴力破解主密码
+- **Master Password Strength**: The tool's security depends on your master password strength
+- **Offline Attacks**: If an attacker obtains the tool and a known key pair, they might attempt to brute force the master password
 
-### 最佳实践
+### Best Practices
 
-1. **使用强主密码**: 建议使用包含大小写字母、数字和特殊字符的长密码
-2. **保护工具安全**: 不要在不信任的环境中使用
-3. **上下文版本控制**: 如需更换密钥，更改上下文中的版本号
-4. **定期轮换**: 定期更换重要服务的密钥
+1. **Use Strong Master Password**: Recommended to use long passwords with uppercase, lowercase, numbers, and special characters
+2. **Protect Tool Security**: Don't use in untrusted environments
+3. **Context Version Control**: Change version number in context when keys need rotation
+4. **Regular Rotation**: Periodically rotate keys for important services
 
-## 技术实现
+## Technical Implementation
 
-DetKey 使用以下密码学组件：
+DetKey uses the following cryptographic components:
 
-1. **Argon2id**: 用于将用户密码转换为高强度主种子
-2. **HKDF**: 用于从主种子衍生特定上下文的密钥种子
-3. **Ed25519**: 用于生成SSH密钥对
+1. **Argon2id**: Converts user password to high-strength master seed
+2. **HKDF**: Derives context-specific key seed from master seed
+3. **Ed25519**: Generates SSH key pairs
 
-### 密钥生成流程
+### Key Generation Flow
 
 ```
-主密码 → [Argon2id] → 主种子 → [HKDF + 上下文] → 最终种子 → [Ed25519] → SSH密钥对
+Master Password → [Argon2id] → Master Seed → [HKDF + Context] → Final Seed → [Ed25519] → SSH Key Pair
 ```
 
-## 许可证
+## License
 
-本项目遵循与仓库相同的许可证。
+This project follows the same license as the repository.
 
-## 贡献
+## Contributing
 
-欢迎提交问题和拉取请求。在做出重大更改之前，请先开一个问题讨论您想要的更改。
+Issues and pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.

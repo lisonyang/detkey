@@ -18,7 +18,7 @@ import (
 
 // SALT 是一个固定的、公开的字符串。更改它会导致所有密钥都变化。
 // 理想情况下，每个用户都应该使用自己独一无二的盐。
-const SALT = "a-unique-salt-for-the-axiom-v1"
+const SALT = "a-unique-salt-for-detkey-v1"
 
 func main() {
 	// --- 1. 解析命令行参数 ---

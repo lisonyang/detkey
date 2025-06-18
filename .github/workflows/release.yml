@@ -86,7 +86,7 @@ jobs:
             ### 安装
             您可以使用以下命令一键安装：
             ```sh
-            curl -sfL https://raw.githubusercontent.com/lisonyang/the-axiom/main/install.sh | sh
+            curl -sfL https://raw.githubusercontent.com/lisonyang/detkey/main/install.sh | sh
             ```
             
             ### 手动安装

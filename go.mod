@@ -1,4 +1,4 @@
-module github.com/detkey-tool/detkey
+module github.com/lisonyang/detkey
 
 go 1.21
 

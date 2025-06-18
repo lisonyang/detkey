@@ -6,14 +6,14 @@
 # 并从 GitHub Releases 下载最新的、对应的 detkey 版本进行安装。
 #
 # 使用方法:
-# curl -sfL https://raw.githubusercontent.com/lisonyang/the-axiom/main/install.sh | sh
+# curl -sfL https://raw.githubusercontent.com/lisonyang/detkey/main/install.sh | sh
 #
 
 set -e # 如果任何命令失败，则立即退出
 
 # --- 配置 ---
 GITHUB_USER="lisonyang"
-GITHUB_REPO="the-axiom"
+GITHUB_REPO="detkey"
 
 BINARY_NAME="detkey"
 INSTALL_DIR="/usr/local/bin"
