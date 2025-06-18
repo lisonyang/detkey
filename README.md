@@ -10,7 +10,28 @@ DetKey 是一个强大的命令行工具，它允许您使用一个主密码和�
 - **安全设计**: 使用 Argon2id 进行密钥延伸，HKDF 进行密钥衍生
 - **标准格式**: 输出标准的 OpenSSH 格式密钥
 
-## 构建
+## 安装
+
+### 一键安装（推荐）
+
+您可以使用以下命令自动下载并安装最新版本：
+
+```bash
+curl -sfL https://raw.githubusercontent.com/lisonyang/the-axiom/main/install.sh | sh
+```
+
+该脚本会自动：
+- 检测您的操作系统和 CPU 架构
+- 从 GitHub Releases 下载对应的二进制文件
+- 安装到 `/usr/local/bin` 目录（可能需要 sudo 权限）
+
+### 手动安装
+
+1. 访问 [Releases 页面](https://github.com/lisonyang/the-axiom/releases)
+2. 下载适合您系统的压缩包
+3. 解压并将 `detkey` 可执行文件移动到 PATH 中的目录
+
+### 从源码构建
 
 确保您已安装 Go 1.21 或更高版本，然后运行：
 
@@ -19,7 +40,7 @@ go mod tidy
 go build -o detkey
 ```
 
-### 跨平台编译
+#### 跨平台编译
 
 为不同平台编译：
 
