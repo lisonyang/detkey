@@ -40,7 +40,7 @@ jobs:
           fi
           
           # 进行跨平台编译
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags="-s -w" -o ${BINARY_NAME} ./cmd/detkey
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags="-s -w" -o ${BINARY_NAME} github.com/lisonyang/detkey/cmd/detkey
           
           echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
         
