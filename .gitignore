@@ -1,6 +1,6 @@
 # Binaries for programs and plugins
-detkey
-detkey-*
+/detkey
+//detkey-*
 *.exe
 *.exe~
 *.dll
