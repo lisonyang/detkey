@@ -1,32 +1,103 @@
-name: Release
+name: Release DetKey
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*' # 当推送 v 开头的 tag 时，例如 v1.0.0，此工作流将被触发
+
+permissions:
+  contents: write # 允许 action 向仓库写入内容（创建 Release）
 
 jobs:
-  goreleaser:
+  build-and-release:
+    name: Build and Release
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 定义所有需要编译的目标平台
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          # 排除 Windows arm64，因为 Go 的支持还不完美
+          - goos: windows
+            goarch: arm64
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.21' # 与项目使用的 Go 版本保持一致
 
-      - name: List files for debugging
-        run: ls -R
-        shell: bash
+      - name: Build artifact
+        run: |
+          # 设置输出二进制文件的名字
+          BINARY_NAME="detkey"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="detkey.exe"
+          fi
+          
+          # 进行跨平台编译
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags="-s -w" -o ${BINARY_NAME} ./cmd/detkey
+          
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+        
+      - name: Create archive
+        run: |
+          # 将二进制文件打包成 .tar.gz (Linux/macOS) 或 .zip (Windows)
+          ARCHIVE_NAME="detkey-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "${ARCHIVE_NAME}.zip" ${{ env.BINARY_NAME }}
+            echo "ARCHIVE_PATH=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czvf "${ARCHIVE_NAME}.tar.gz" ${{ env.BINARY_NAME }}
+            echo "ARCHIVE_PATH=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+      - name: Upload artifact for release
+        # 将每个平台的压缩包作为构建产物上传，以便后续步骤使用
+        uses: actions/upload-artifact@v4
         with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: detkey-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.ARCHIVE_PATH }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-and-release # 等待所有平台的构建任务完成后再执行
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts # 下载到 artifacts 目录
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          # 将 artifacts 目录下所有平台的压缩包都上传到 Release 页面
+          files: artifacts/*/*.* 
+          body: |
+            ## DetKey ${{ github.ref_name }}
+            
+            这是 DetKey 的一个新版本 - 确定性SSH密钥生成器。
+            
+            ### 安装
+            您可以使用以下命令一键安装：
+            ```sh
+            curl -sfL https://raw.githubusercontent.com/lisonyang/detkey/main/install.sh | sh
+            ```
+            
+            ### 手动安装
+            1. 从下面的资源中下载适合您系统的压缩包
+            2. 解压后将 `detkey` 可执行文件移动到您的 PATH 中
+            
+            ### 使用方法
+            ```sh
+            # 生成私钥
+            detkey --context "ssh/server-a/v1"
+            
+            # 生成公钥
+            detkey --context "ssh/server-a/v1" --pub
+            ```
