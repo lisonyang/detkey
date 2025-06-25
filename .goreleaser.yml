@@ -1,5 +1,9 @@
+version: 2
+
 builds:
-  - main: ./cmd/detkey
+  - id: detkey
+    main: ./cmd/detkey/
+    binary: detkey
     goos:
       - linux
       - windows
@@ -9,13 +13,16 @@ builds:
       - arm64
     ldflags:
       - -s -w -X main.version={{.Version}}
+
 archives:
-  - format: tar.gz
+  - id: detkey-archives
+    builds:
+      - detkey
     name_template: "detkey_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
 checksum:
   name_template: 'checksums.txt'
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+
 changelog:
   sort: asc
   filters:
