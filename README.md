@@ -208,40 +208,19 @@ DetKey can generate RSA private keys for mutual TLS (mTLS) authentication, perfe
 
 #### Quick mTLS Setup
 
-Generate all required private keys for a complete mTLS setup:
+Generate all required private keys and certificates for a complete mTLS setup:
 
 ```bash
-# Generate CA private key
-./detkey --context "mtls/ca/v1" --type rsa4096 > ca.key
+# Generate CA private key and certificate
+./detkey --context "mtls/ca/v1" --type rsa4096 --action create-ca-cert --subj "/CN=My Internal CA" > ca.crt
 
-# Generate server private key
-./detkey --context "mtls/server/api.example.com/v1" --type rsa4096 > server.key
+# Generate server private key and certificate
+./detkey --context "mtls/server/api.example.com/v1" --type rsa4096 --action sign-cert --ca-context "mtls/ca/v1" --subj "/CN=api.example.com" < ca.crt > server.crt
 
-# Generate client private key  
-./detkey --context "mtls/client/dashboard/v1" --type rsa4096 > client.key
+# Generate client private key and certificate
+./detkey --context "mtls/client/dashboard/v1" --type rsa4096 --action sign-cert --ca-context "mtls/ca/v1" --subj "/CN=dashboard-client" < ca.crt > client.crt
 ```
 
-#### Complete mTLS Certificate Chain
-
-After generating private keys, create the certificate chain using OpenSSL:
-
-```bash
-# 1. Create self-signed CA certificate
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt \
-    -subj "/CN=My Internal CA"
-
-# 2. Create server certificate
-openssl req -new -key server.key -out server.csr \
-    -subj "/CN=api.example.com"
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out server.crt -days 365 -sha256
-
-# 3. Create client certificate
-openssl req -new -key client.key -out client.csr \
-    -subj "/CN=dashboard-client"
-openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out client.crt -days 365 -sha256
-```
 
 #### mTLS Demo Script
 
